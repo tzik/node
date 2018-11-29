@@ -17,9 +17,6 @@ namespace internal {
 // Script describes a script which has been added to the VM.
 class Script : public Struct, public NeverReadOnlySpaceObject {
  public:
-  using NeverReadOnlySpaceObject::GetHeap;
-  using NeverReadOnlySpaceObject::GetIsolate;
-
   // Script types.
   enum Type {
     TYPE_NATIVE = 0,
@@ -67,10 +64,10 @@ class Script : public Struct, public NeverReadOnlySpaceObject {
 
   // [eval_from_shared]: for eval scripts the shared function info for the
   // function from which eval was called.
-  DECL_ACCESSORS(eval_from_shared, SharedFunctionInfo)
+  DECL_ACCESSORS2(eval_from_shared, SharedFunctionInfo)
 
   // [wrapped_arguments]: for the list of arguments in a wrapped script.
-  DECL_ACCESSORS(wrapped_arguments, FixedArray)
+  DECL_ACCESSORS2(wrapped_arguments, FixedArray)
 
   // Whether the script is implicitly wrapped in a function.
   inline bool is_wrapped() const;
@@ -86,7 +83,7 @@ class Script : public Struct, public NeverReadOnlySpaceObject {
 
   // [shared_function_infos]: weak fixed array containing all shared
   // function infos created from this script.
-  DECL_ACCESSORS(shared_function_infos, WeakFixedArray)
+  DECL_ACCESSORS2(shared_function_infos, WeakFixedArray)
 
   // [flags]: Holds an exciting bitfield.
   DECL_INT_ACCESSORS(flags)
@@ -102,7 +99,7 @@ class Script : public Struct, public NeverReadOnlySpaceObject {
   DECL_ACCESSORS(wasm_module_object, Object)
 
   // [host_defined_options]: Options defined by the embedder.
-  DECL_ACCESSORS(host_defined_options, FixedArray)
+  DECL_ACCESSORS2(host_defined_options, FixedArray)
 
   // [compilation_type]: how the the script was compiled. Encoded in the
   // 'flags' field.

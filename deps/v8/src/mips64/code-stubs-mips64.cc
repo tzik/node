@@ -9,10 +9,10 @@
 #include "src/code-stubs.h"
 #include "src/frame-constants.h"
 #include "src/frames.h"
-#include "src/heap/heap-inl.h"
 #include "src/ic/ic.h"
 #include "src/ic/stub-cache.h"
 #include "src/isolate.h"
+#include "src/macro-assembler.h"
 #include "src/objects/api-callbacks.h"
 #include "src/regexp/jsregexp.h"
 #include "src/regexp/regexp-macro-assembler.h"
@@ -43,8 +43,6 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
     // Stack:
     // 0 arg slots on mips64 (4 args slots on mips)
     // args -- in a4/a4 on mips64, on stack on mips
-
-    ProfileEntryHookStub::MaybeCallEntryHook(masm);
 
     // Save callee saved registers on the stack.
     __ MultiPush(kCalleeSaved | ra.bit());
@@ -118,7 +116,7 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
   __ li(a4, ExternalReference::Create(
                 IsolateAddressId::kPendingExceptionAddress, isolate));
   __ Sd(v0, MemOperand(a4));  // We come back from 'invoke'. result is in v0.
-  __ LoadRoot(v0, Heap::kExceptionRootIndex);
+  __ LoadRoot(v0, RootIndex::kException);
   __ b(&exit);  // b exposes branch delay slot.
   __ nop();   // Branch delay slot nop.
 
@@ -225,88 +223,6 @@ void DirectCEntryStub::GenerateCall(MacroAssembler* masm,
   __ Move(t9, target);
   __ li(kScratchReg, Operand(loc, RelocInfo::CODE_TARGET), CONSTANT_SIZE);
   __ Call(kScratchReg);
-}
-
-
-void ProfileEntryHookStub::MaybeCallEntryHookDelayed(TurboAssembler* tasm,
-                                                     Zone* zone) {
-  if (tasm->isolate()->function_entry_hook() != nullptr) {
-    tasm->push(ra);
-    tasm->CallStubDelayed(new (zone) ProfileEntryHookStub(nullptr));
-    tasm->pop(ra);
-  }
-}
-
-void ProfileEntryHookStub::MaybeCallEntryHook(MacroAssembler* masm) {
-  if (masm->isolate()->function_entry_hook() != nullptr) {
-    ProfileEntryHookStub stub(masm->isolate());
-    __ push(ra);
-    __ CallStub(&stub);
-    __ pop(ra);
-  }
-}
-
-
-void ProfileEntryHookStub::Generate(MacroAssembler* masm) {
-  // The entry hook is a "push ra" instruction, followed by a call.
-  // Note: on MIPS "push" is 2 instruction
-  const int32_t kReturnAddressDistanceFromFunctionStart =
-      Assembler::kCallTargetAddressOffset + (2 * kInstrSize);
-
-  // This should contain all kJSCallerSaved registers.
-  const RegList kSavedRegs =
-     kJSCallerSaved |  // Caller saved registers.
-     s5.bit();         // Saved stack pointer.
-
-  // We also save ra, so the count here is one higher than the mask indicates.
-  const int32_t kNumSavedRegs = kNumJSCallerSaved + 2;
-
-  // Save all caller-save registers as this may be called from anywhere.
-  __ MultiPush(kSavedRegs | ra.bit());
-
-  // Compute the function's address for the first argument.
-  __ Dsubu(a0, ra, Operand(kReturnAddressDistanceFromFunctionStart));
-
-  // The caller's return address is above the saved temporaries.
-  // Grab that for the second argument to the hook.
-  __ Daddu(a1, sp, Operand(kNumSavedRegs * kPointerSize));
-
-  // Align the stack if necessary.
-  int frame_alignment = masm->ActivationFrameAlignment();
-  if (frame_alignment > kPointerSize) {
-    __ mov(s5, sp);
-    DCHECK(base::bits::IsPowerOfTwo(frame_alignment));
-    __ And(sp, sp, Operand(-frame_alignment));
-  }
-
-  __ Dsubu(sp, sp, kCArgsSlotsSize);
-#if defined(V8_HOST_ARCH_MIPS) || defined(V8_HOST_ARCH_MIPS64)
-  int64_t entry_hook =
-      reinterpret_cast<int64_t>(isolate()->function_entry_hook());
-  __ li(t9, Operand(entry_hook));
-#else
-  // Under the simulator we need to indirect the entry hook through a
-  // trampoline function at a known address.
-  // It additionally takes an isolate as a third parameter.
-  __ li(a2, ExternalReference::isolate_address(isolate()));
-
-  ApiFunction dispatcher(FUNCTION_ADDR(EntryHookTrampoline));
-  __ li(t9, ExternalReference::Create(&dispatcher,
-                                      ExternalReference::BUILTIN_CALL));
-#endif
-  // Call C function through t9 to conform ABI for PIC.
-  __ Call(t9);
-
-  // Restore the stack pointer if needed.
-  if (frame_alignment > kPointerSize) {
-    __ mov(sp, s5);
-  } else {
-    __ Daddu(sp, sp, kCArgsSlotsSize);
-  }
-
-  // Also pop ra to get Ret(0).
-  __ MultiPop(kSavedRegs | ra.bit());
-  __ Ret();
 }
 
 static int AddressOffset(ExternalReference ref0, ExternalReference ref1) {
@@ -418,7 +334,7 @@ static void CallApiFunctionAndReturn(MacroAssembler* masm,
                     stack_space_offset != kInvalidStackOffset);
 
   // Check if the function scheduled an exception.
-  __ LoadRoot(a4, Heap::kTheHoleValueRootIndex);
+  __ LoadRoot(a4, RootIndex::kTheHoleValue);
   __ li(kScratchReg, ExternalReference::scheduled_exception_address(isolate));
   __ Ld(a5, MemOperand(kScratchReg));
   __ Branch(&promote_scheduled_exception, ne, a4, Operand(a5));
@@ -469,13 +385,13 @@ void CallApiCallbackStub::Generate(MacroAssembler* masm) {
   STATIC_ASSERT(FCA::kHolderIndex == 0);
 
   // new target
-  __ PushRoot(Heap::kUndefinedValueRootIndex);
+  __ PushRoot(RootIndex::kUndefinedValue);
 
   // call data.
   __ Push(call_data);
 
   Register scratch = call_data;
-  __ LoadRoot(scratch, Heap::kUndefinedValueRootIndex);
+  __ LoadRoot(scratch, RootIndex::kUndefinedValue);
   // Push return value and default return value.
   __ Push(scratch, scratch);
   __ li(scratch, ExternalReference::isolate_address(masm->isolate()));
@@ -548,7 +464,7 @@ void CallApiGetterStub::Generate(MacroAssembler* masm) {
   __ Sd(receiver, MemOperand(sp, (PCA::kThisIndex + 1) * kPointerSize));
   __ Ld(scratch, FieldMemOperand(callback, AccessorInfo::kDataOffset));
   __ Sd(scratch, MemOperand(sp, (PCA::kDataIndex + 1) * kPointerSize));
-  __ LoadRoot(scratch, Heap::kUndefinedValueRootIndex);
+  __ LoadRoot(scratch, RootIndex::kUndefinedValue);
   __ Sd(scratch, MemOperand(sp, (PCA::kReturnValueOffset + 1) * kPointerSize));
   __ Sd(scratch, MemOperand(sp, (PCA::kReturnValueDefaultValueIndex + 1) *
                                     kPointerSize));

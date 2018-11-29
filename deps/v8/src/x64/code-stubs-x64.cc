@@ -11,10 +11,10 @@
 #include "src/double.h"
 #include "src/frame-constants.h"
 #include "src/frames.h"
-#include "src/heap/heap-inl.h"
 #include "src/ic/ic.h"
 #include "src/ic/stub-cache.h"
 #include "src/isolate.h"
+#include "src/macro-assembler.h"
 #include "src/objects-inl.h"
 #include "src/objects/api-callbacks.h"
 #include "src/objects/regexp-match-info.h"
@@ -30,8 +30,6 @@ namespace internal {
 void JSEntryStub::Generate(MacroAssembler* masm) {
   Label invoke, handler_entry, exit;
   Label not_outermost_js, not_outermost_js_2;
-
-  ProfileEntryHookStub::MaybeCallEntryHook(masm);
 
   {  // NOLINT. Scope block confuses linter.
     NoRootArrayScope uninitialized_root_register(masm);
@@ -78,7 +76,7 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
   ExternalReference c_entry_fp =
       ExternalReference::Create(IsolateAddressId::kCEntryFPAddress, isolate());
   {
-    Operand c_entry_fp_operand = masm->ExternalOperand(c_entry_fp);
+    Operand c_entry_fp_operand = masm->ExternalReferenceAsOperand(c_entry_fp);
     __ Push(c_entry_fp_operand);
   }
 
@@ -107,7 +105,7 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
   ExternalReference pending_exception = ExternalReference::Create(
       IsolateAddressId::kPendingExceptionAddress, isolate());
   __ Store(pending_exception, rax);
-  __ LoadRoot(rax, Heap::kExceptionRootIndex);
+  __ LoadRoot(rax, RootIndex::kException);
   __ jmp(&exit);
 
   // Invoke: Link this frame into the handler chain.
@@ -134,7 +132,8 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
   __ bind(&not_outermost_js_2);
 
   // Restore the top frame descriptor from the stack.
-  { Operand c_entry_fp_operand = masm->ExternalOperand(c_entry_fp);
+  {
+    Operand c_entry_fp_operand = masm->ExternalReferenceAsOperand(c_entry_fp);
     __ Pop(c_entry_fp_operand);
   }
 
@@ -169,56 +168,6 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
   // Restore frame pointer and return.
   __ popq(rbp);
   __ ret(0);
-}
-
-void ProfileEntryHookStub::MaybeCallEntryHook(MacroAssembler* masm) {
-  if (masm->isolate()->function_entry_hook() != nullptr) {
-    ProfileEntryHookStub stub(masm->isolate());
-    masm->CallStub(&stub);
-  }
-}
-
-void ProfileEntryHookStub::MaybeCallEntryHookDelayed(TurboAssembler* tasm,
-                                                     Zone* zone) {
-  if (tasm->isolate()->function_entry_hook() != nullptr) {
-    tasm->CallStubDelayed(new (zone) ProfileEntryHookStub(nullptr));
-  }
-}
-
-void ProfileEntryHookStub::Generate(MacroAssembler* masm) {
-  // This stub can be called from essentially anywhere, so it needs to save
-  // all volatile and callee-save registers.
-  const size_t kNumSavedRegisters = 2;
-  __ pushq(arg_reg_1);
-  __ pushq(arg_reg_2);
-
-  // Calculate the original stack pointer and store it in the second arg.
-  __ leap(arg_reg_2,
-         Operand(rsp, kNumSavedRegisters * kRegisterSize + kPCOnStackSize));
-
-  // Calculate the function address to the first arg.
-  __ movp(arg_reg_1, Operand(rsp, kNumSavedRegisters * kRegisterSize));
-  __ subp(arg_reg_1, Immediate(Assembler::kShortCallInstructionLength));
-
-  // Save the remainder of the volatile registers.
-  masm->PushCallerSaved(kSaveFPRegs, arg_reg_1, arg_reg_2);
-
-  // Call the entry hook function.
-  __ Move(rax, FUNCTION_ADDR(isolate()->function_entry_hook()),
-          RelocInfo::NONE);
-
-  AllowExternalCallThatCantCauseGC scope(masm);
-
-  const int kArgumentCount = 2;
-  __ PrepareCallCFunction(kArgumentCount);
-  __ CallCFunction(rax, kArgumentCount);
-
-  // Restore volatile regs.
-  masm->PopCallerSaved(kSaveFPRegs, arg_reg_1, arg_reg_2);
-  __ popq(arg_reg_2);
-  __ popq(arg_reg_1);
-
-  __ Ret();
 }
 
 static int Offset(ExternalReference ref0, ExternalReference ref1) {
@@ -352,19 +301,19 @@ static void CallApiFunctionAndReturn(MacroAssembler* masm,
   __ CmpInstanceType(map, FIRST_JS_RECEIVER_TYPE);
   __ j(above_equal, &ok, Label::kNear);
 
-  __ CompareRoot(map, Heap::kHeapNumberMapRootIndex);
+  __ CompareRoot(map, RootIndex::kHeapNumberMap);
   __ j(equal, &ok, Label::kNear);
 
-  __ CompareRoot(return_value, Heap::kUndefinedValueRootIndex);
+  __ CompareRoot(return_value, RootIndex::kUndefinedValue);
   __ j(equal, &ok, Label::kNear);
 
-  __ CompareRoot(return_value, Heap::kTrueValueRootIndex);
+  __ CompareRoot(return_value, RootIndex::kTrueValue);
   __ j(equal, &ok, Label::kNear);
 
-  __ CompareRoot(return_value, Heap::kFalseValueRootIndex);
+  __ CompareRoot(return_value, RootIndex::kFalseValue);
   __ j(equal, &ok, Label::kNear);
 
-  __ CompareRoot(return_value, Heap::kNullValueRootIndex);
+  __ CompareRoot(return_value, RootIndex::kNullValue);
   __ j(equal, &ok, Label::kNear);
 
   __ Abort(AbortReason::kAPICallReturnedInvalidObject);
@@ -428,15 +377,15 @@ void CallApiCallbackStub::Generate(MacroAssembler* masm) {
   __ PopReturnAddressTo(return_address);
 
   // new target
-  __ PushRoot(Heap::kUndefinedValueRootIndex);
+  __ PushRoot(RootIndex::kUndefinedValue);
 
   // call data
   __ Push(call_data);
 
   // return value
-  __ PushRoot(Heap::kUndefinedValueRootIndex);
+  __ PushRoot(RootIndex::kUndefinedValue);
   // return value default
-  __ PushRoot(Heap::kUndefinedValueRootIndex);
+  __ PushRoot(RootIndex::kUndefinedValue);
   // isolate
   Register scratch = call_data;
   __ Move(scratch, ExternalReference::isolate_address(masm->isolate()));
@@ -526,12 +475,12 @@ void CallApiGetterStub::Generate(MacroAssembler* masm) {
   __ PopReturnAddressTo(scratch);
   __ Push(receiver);
   __ Push(FieldOperand(callback, AccessorInfo::kDataOffset));
-  __ LoadRoot(kScratchRegister, Heap::kUndefinedValueRootIndex);
+  __ LoadRoot(kScratchRegister, RootIndex::kUndefinedValue);
   __ Push(kScratchRegister);  // return value
   __ Push(kScratchRegister);  // return value default
   __ PushAddress(ExternalReference::isolate_address(isolate()));
   __ Push(holder);
-  __ Push(Smi::kZero);  // should_throw_on_error -> false
+  __ Push(Smi::zero());  // should_throw_on_error -> false
   __ Push(FieldOperand(callback, AccessorInfo::kNameOffset));
   __ PushReturnAddressFrom(scratch);
 

@@ -4174,7 +4174,6 @@ TEST(RunChangeFloat64ToInt32_B) {
   }
 }
 
-
 TEST(RunChangeFloat64ToUint32) {
   BufferedRawMachineAssemblerTester<uint32_t> m(MachineType::Float64());
   m.Return(m.ChangeFloat64ToUint32(m.Parameter(0)));
@@ -4715,7 +4714,7 @@ TEST(RunRefDiamond) {
   const int magic = 99644;
   Handle<String> rexpected =
       CcTest::i_isolate()->factory()->InternalizeUtf8String("A");
-  String* buffer;
+  String buffer;
 
   RawMachineLabel blocka, blockb, end;
   Node* k1 = m.StringConstant("A");
@@ -4744,7 +4743,7 @@ TEST(RunDoubleRefDiamond) {
   double dconstant = 99.99;
   Handle<String> rexpected =
       CcTest::i_isolate()->factory()->InternalizeUtf8String("AX");
-  String* rbuffer;
+  String rbuffer;
 
   RawMachineLabel blocka, blockb, end;
   Node* d1 = m.Float64Constant(dconstant);
@@ -4779,7 +4778,7 @@ TEST(RunDoubleRefDoubleDiamond) {
   double dconstant = 99.997;
   Handle<String> rexpected =
       CcTest::i_isolate()->factory()->InternalizeUtf8String("AD");
-  String* rbuffer;
+  String rbuffer;
 
   RawMachineLabel blocka, blockb, mid, blockd, blocke, end;
   Node* d1 = m.Float64Constant(dconstant);
@@ -6339,6 +6338,29 @@ TEST(RunCallCFunction9) {
 
 #if V8_TARGET_ARCH_64_BIT
 // TODO(titzer): run int64 tests on all platforms when supported.
+
+TEST(RunChangeFloat64ToInt64) {
+  BufferedRawMachineAssemblerTester<int64_t> m(MachineType::Float64());
+  m.Return(m.ChangeFloat64ToInt64(m.Parameter(0)));
+
+  FOR_INT64_INPUTS(i) {
+    double input = static_cast<double>(*i);
+    if (static_cast<int64_t>(input) == *i) {
+      CHECK_EQ(static_cast<int64_t>(input), m.Call(input));
+    }
+  }
+}
+
+TEST(RunChangeInt64ToFloat64) {
+  BufferedRawMachineAssemblerTester<double> m(MachineType::Int64());
+  m.Return(m.ChangeInt64ToFloat64(m.Parameter(0)));
+  FOR_INT64_INPUTS(i) {
+    double output = static_cast<double>(*i);
+    if (static_cast<int64_t>(output) == *i) {
+      CHECK_EQ(output, m.Call(*i));
+    }
+  }
+}
 
 TEST(RunBitcastInt64ToFloat64) {
   int64_t input = 1;

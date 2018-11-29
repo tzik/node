@@ -24,13 +24,16 @@ namespace wasm {
 // that buffer.
 class WasmMemoryTracker {
  public:
-  WasmMemoryTracker() {}
+  WasmMemoryTracker() = default;
   V8_EXPORT_PRIVATE ~WasmMemoryTracker();
 
   // ReserveAddressSpace attempts to increase the reserved address space counter
   // by {num_bytes}. Returns true if successful (meaning it is okay to go ahead
   // and reserve {num_bytes} bytes), false otherwise.
-  bool ReserveAddressSpace(size_t num_bytes);
+  // Use {kSoftLimit} if you can implement a fallback which needs less reserved
+  // memory.
+  enum ReservationLimit { kSoftLimit, kHardLimit };
+  bool ReserveAddressSpace(size_t num_bytes, ReservationLimit limit);
 
   void RegisterAllocation(Isolate* isolate, void* allocation_base,
                           size_t allocation_length, void* buffer_start,
@@ -62,6 +65,18 @@ class WasmMemoryTracker {
 
     friend WasmMemoryTracker;
   };
+
+  // Allow tests to allocate a backing store the same way as we do it for
+  // WebAssembly memory. This is used in unit tests for trap handler to
+  // generate the same signals/exceptions for invalid memory accesses as
+  // we would get with WebAssembly memory.
+  V8_EXPORT_PRIVATE void* TryAllocateBackingStoreForTesting(
+      Heap* heap, size_t size, void** allocation_base,
+      size_t* allocation_length);
+
+  // Free memory allocated with TryAllocateBackingStoreForTesting.
+  V8_EXPORT_PRIVATE void FreeBackingStoreForTesting(base::AddressRegion memory,
+                                                    void* buffer_start);
 
   // Decreases the amount of reserved address space.
   void ReleaseReservation(size_t num_bytes);

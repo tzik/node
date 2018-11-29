@@ -7,7 +7,6 @@
 
 #include "src/allocation.h"
 #include "src/assert-scope.h"
-#include "src/utils.h"
 #include "src/v8memory.h"
 #include "src/zone/zone-chunk-list.h"
 #include "src/zone/zone.h"
@@ -17,7 +16,7 @@ namespace internal {
 
 class Register;
 
-class SafepointEntry BASE_EMBEDDED {
+class SafepointEntry {
  public:
   SafepointEntry() : info_(0), bits_(nullptr), trampoline_pc_(-1) {}
 
@@ -87,10 +86,9 @@ class SafepointEntry BASE_EMBEDDED {
   int trampoline_pc_;
 };
 
-
-class SafepointTable BASE_EMBEDDED {
+class SafepointTable {
  public:
-  explicit SafepointTable(Code* code);
+  explicit SafepointTable(Code code);
   explicit SafepointTable(Address instruction_start,
                           size_t safepoint_table_offset, uint32_t stack_slots,
                           bool has_deopt = false);
@@ -155,7 +153,7 @@ class SafepointTable BASE_EMBEDDED {
   static void PrintBits(std::ostream& os,  // NOLINT
                         uint8_t byte, int digits);
 
-  DisallowHeapAllocation no_allocation_;
+  DISALLOW_HEAP_ALLOCATION(no_allocation_);
   Address instruction_start_;
   uint32_t stack_slots_;
   unsigned length_;
@@ -171,8 +169,7 @@ class SafepointTable BASE_EMBEDDED {
   DISALLOW_COPY_AND_ASSIGN(SafepointTable);
 };
 
-
-class Safepoint BASE_EMBEDDED {
+class Safepoint {
  public:
   typedef enum {
     kSimple = 0,
@@ -201,8 +198,7 @@ class Safepoint BASE_EMBEDDED {
   friend class SafepointTableBuilder;
 };
 
-
-class SafepointTableBuilder BASE_EMBEDDED {
+class SafepointTableBuilder {
  public:
   explicit SafepointTableBuilder(Zone* zone)
       : deoptimization_info_(zone),

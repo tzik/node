@@ -8,6 +8,7 @@
 #include "src/objects/api-callbacks.h"
 
 #include "src/heap/heap-inl.h"
+#include "src/heap/heap-write-barrier.h"
 #include "src/objects/name.h"
 #include "src/objects/templates.h"
 
@@ -22,7 +23,7 @@ CAST_ACCESSOR(AccessCheckInfo)
 CAST_ACCESSOR(InterceptorInfo)
 CAST_ACCESSOR(CallHandlerInfo)
 
-ACCESSORS(AccessorInfo, name, Name, kNameOffset)
+ACCESSORS2(AccessorInfo, name, Name, kNameOffset)
 SMI_ACCESSORS(AccessorInfo, flags, kFlagsOffset)
 ACCESSORS(AccessorInfo, expected_receiver_type, Object,
           kExpectedReceiverTypeOffset)
@@ -59,8 +60,22 @@ BIT_FIELD_ACCESSORS(AccessorInfo, flags, is_special_data_property,
 BIT_FIELD_ACCESSORS(AccessorInfo, flags, replace_on_access,
                     AccessorInfo::ReplaceOnAccessBit)
 BIT_FIELD_ACCESSORS(AccessorInfo, flags, is_sloppy, AccessorInfo::IsSloppyBit)
-BIT_FIELD_ACCESSORS(AccessorInfo, flags, has_no_side_effect,
-                    AccessorInfo::HasNoSideEffectBit)
+BIT_FIELD_ACCESSORS(AccessorInfo, flags, getter_side_effect_type,
+                    AccessorInfo::GetterSideEffectTypeBits)
+
+SideEffectType AccessorInfo::setter_side_effect_type() const {
+  return SetterSideEffectTypeBits::decode(flags());
+}
+
+void AccessorInfo::set_setter_side_effect_type(SideEffectType value) {
+  // We do not support describing setters as having no side effect, since
+  // calling set accessors must go through a store bytecode. Store bytecodes
+  // support checking receivers for temporary objects, but still expect
+  // the receiver to be written to.
+  CHECK_NE(value, SideEffectType::kHasNoSideEffect);
+  set_flags(SetterSideEffectTypeBits::update(flags(), value));
+}
+
 BIT_FIELD_ACCESSORS(AccessorInfo, flags, initial_property_attributes,
                     AccessorInfo::InitialAttributesBits)
 

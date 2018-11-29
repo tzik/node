@@ -12,10 +12,10 @@
 #include "src/counters.h"
 #include "src/frame-constants.h"
 #include "src/frames.h"
-#include "src/heap/heap-inl.h"
 #include "src/ic/ic.h"
 #include "src/ic/stub-cache.h"
 #include "src/isolate.h"
+#include "src/macro-assembler.h"
 #include "src/objects/api-callbacks.h"
 #include "src/objects/regexp-match-info.h"
 #include "src/regexp/jsregexp.h"
@@ -52,8 +52,6 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
     __ EnableInstrumentation();
 
     __ PushCalleeSavedRegisters();
-
-    ProfileEntryHookStub::MaybeCallEntryHook(masm);
 
     // Set up the reserved register for 0.0.
     __ Fmov(fp_zero, 0.0);
@@ -124,7 +122,7 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
                     IsolateAddressId::kPendingExceptionAddress, isolate())));
   }
   __ Str(code_entry, MemOperand(x10));
-  __ LoadRoot(x0, Heap::kExceptionRootIndex);
+  __ LoadRoot(x0, RootIndex::kException);
   __ B(&exit);
 
   // Invoke: Link this frame into the handler chain.
@@ -212,84 +210,6 @@ void JSEntryStub::Generate(MacroAssembler* masm) {
   __ PopCalleeSavedRegisters();
   __ Ret();
 }
-
-// The entry hook is a Push (stp) instruction, followed by a near call.
-static const unsigned int kProfileEntryHookCallSize =
-    (1 * kInstrSize) + Assembler::kNearCallSize;
-
-void ProfileEntryHookStub::MaybeCallEntryHookDelayed(TurboAssembler* tasm,
-                                                     Zone* zone) {
-  if (tasm->isolate()->function_entry_hook() != nullptr) {
-    Assembler::BlockConstPoolScope no_const_pools(tasm);
-    DontEmitDebugCodeScope no_debug_code(tasm);
-    Label entry_hook_call_start;
-    tasm->Bind(&entry_hook_call_start);
-    tasm->Push(padreg, lr);
-    tasm->CallStubDelayed(new (zone) ProfileEntryHookStub(nullptr));
-    DCHECK_EQ(tasm->SizeOfCodeGeneratedSince(&entry_hook_call_start),
-              kProfileEntryHookCallSize);
-    tasm->Pop(lr, padreg);
-  }
-}
-
-void ProfileEntryHookStub::MaybeCallEntryHook(MacroAssembler* masm) {
-  if (masm->isolate()->function_entry_hook() != nullptr) {
-    ProfileEntryHookStub stub(masm->isolate());
-    Assembler::BlockConstPoolScope no_const_pools(masm);
-    DontEmitDebugCodeScope no_debug_code(masm);
-    Label entry_hook_call_start;
-    __ Bind(&entry_hook_call_start);
-    __ Push(padreg, lr);
-    __ CallStub(&stub);
-    DCHECK_EQ(masm->SizeOfCodeGeneratedSince(&entry_hook_call_start),
-              kProfileEntryHookCallSize);
-    __ Pop(lr, padreg);
-  }
-}
-
-
-void ProfileEntryHookStub::Generate(MacroAssembler* masm) {
-  HardAbortScope hard_aborts(masm);
-
-  // Save all kCallerSaved registers (including lr), since this can be called
-  // from anywhere.
-  // TODO(jbramley): What about FP registers?
-  __ PushCPURegList(kCallerSaved);
-  DCHECK(kCallerSaved.IncludesAliasOf(lr));
-  const int kNumSavedRegs = kCallerSaved.Count();
-  DCHECK_EQ(kNumSavedRegs % 2, 0);
-
-  // Compute the function's address as the first argument.
-  __ Sub(x0, lr, kProfileEntryHookCallSize);
-
-#if V8_HOST_ARCH_ARM64
-  uintptr_t entry_hook =
-      reinterpret_cast<uintptr_t>(isolate()->function_entry_hook());
-  __ Mov(x10, entry_hook);
-#else
-  // Under the simulator we need to indirect the entry hook through a trampoline
-  // function at a known address.
-  ApiFunction dispatcher(FUNCTION_ADDR(EntryHookTrampoline));
-  __ Mov(x10, Operand(ExternalReference::Create(
-                  &dispatcher, ExternalReference::BUILTIN_CALL)));
-  // It additionally takes an isolate as a third parameter
-  __ Mov(x2, ExternalReference::isolate_address(isolate()));
-#endif
-
-  // The caller's return address is above the saved temporaries.
-  // Grab its location for the second argument to the hook.
-  __ SlotAddress(x1, kNumSavedRegs);
-
-  {
-    // Create a dummy frame, as CallCFunction requires this.
-    FrameScope frame(masm, StackFrame::MANUAL);
-    __ CallCFunction(x10, 2, 0);
-  }
-
-  __ PopCPURegList(kCallerSaved);
-  __ Ret();
-}
-
 
 void DirectCEntryStub::Generate(MacroAssembler* masm) {
   // Put return address on the stack (accessible to GC through exit frame pc).
@@ -434,8 +354,7 @@ static void CallApiFunctionAndReturn(MacroAssembler* masm,
   // Check if the function scheduled an exception.
   __ Mov(x5, ExternalReference::scheduled_exception_address(isolate));
   __ Ldr(x5, MemOperand(x5));
-  __ JumpIfNotRoot(x5, Heap::kTheHoleValueRootIndex,
-                   &promote_scheduled_exception);
+  __ JumpIfNotRoot(x5, RootIndex::kTheHoleValue, &promote_scheduled_exception);
 
   __ DropSlots(stack_space);
   __ Ret();
@@ -484,7 +403,7 @@ void CallApiCallbackStub::Generate(MacroAssembler* masm) {
   STATIC_ASSERT(FCA::kHolderIndex == 0);
 
   Register undef = x7;
-  __ LoadRoot(undef, Heap::kUndefinedValueRootIndex);
+  __ LoadRoot(undef, RootIndex::kUndefinedValue);
 
   // Push new target, call data.
   __ Push(undef, call_data);
@@ -562,7 +481,7 @@ void CallApiGetterStub::Generate(MacroAssembler* masm) {
                      name));
 
   __ Ldr(data, FieldMemOperand(callback, AccessorInfo::kDataOffset));
-  __ LoadRoot(undef, Heap::kUndefinedValueRootIndex);
+  __ LoadRoot(undef, RootIndex::kUndefinedValue);
   __ Mov(isolate_address, ExternalReference::isolate_address(isolate()));
   __ Ldr(name, FieldMemOperand(callback, AccessorInfo::kNameOffset));
 

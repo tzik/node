@@ -6,7 +6,7 @@
 
 #include "src/base/iterator.h"
 #include "src/globals.h"
-#include "src/utils.h"
+#include "src/memcopy.h"
 #include "src/zone/zone.h"
 
 #ifndef V8_ZONE_ZONE_CHUNK_LIST_H_
@@ -155,8 +155,8 @@ class ZoneChunkListIterator
   using ChunkList = maybe_const<ZoneChunkList<T>>;
 
  public:
-  maybe_const<T>& operator*() { return current_->items()[position_]; }
-  maybe_const<T>* operator->() { return &current_->items()[position_]; }
+  maybe_const<T>& operator*() const { return current_->items()[position_]; }
+  maybe_const<T>* operator->() const { return &current_->items()[position_]; }
   bool operator==(const ZoneChunkListIterator& other) const {
     return other.current_ == current_ && other.position_ == position_;
   }

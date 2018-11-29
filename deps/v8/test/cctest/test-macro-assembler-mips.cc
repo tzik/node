@@ -31,7 +31,6 @@
 #include "src/api-inl.h"
 #include "src/base/utils/random-number-generator.h"
 #include "src/macro-assembler.h"
-#include "src/mips/macro-assembler-mips.h"
 #include "src/objects-inl.h"
 #include "src/simulator.h"
 #include "src/v8.h"
@@ -122,7 +121,7 @@ static void TestNaN(const char *code) {
   i::Handle<i::JSReceiver> o = v8::Utils::OpenHandle(*result);
   i::Handle<i::JSArray> array1(reinterpret_cast<i::JSArray*>(*o),
                                o->GetIsolate());
-  i::FixedDoubleArray* a = i::FixedDoubleArray::cast(array1->elements());
+  i::FixedDoubleArray a = i::FixedDoubleArray::cast(array1->elements());
   double value = a->get_scalar(0);
   CHECK(std::isnan(value) &&
         bit_cast<uint64_t>(value) ==
@@ -703,7 +702,7 @@ TEST(min_max_nan) {
 
   auto handle_dnan = [masm](FPURegister dst, Label* nan, Label* back) {
     __ bind(nan);
-    __ LoadRoot(t8, Heap::kNanValueRootIndex);
+    __ LoadRoot(t8, RootIndex::kNanValue);
     __ Ldc1(dst, FieldMemOperand(t8, HeapNumber::kValueOffset));
     __ Branch(back);
   };

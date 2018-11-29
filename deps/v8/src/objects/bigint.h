@@ -24,23 +24,40 @@ class ValueSerializer;
 class BigIntBase : public HeapObject {
  public:
   inline int length() const {
-    intptr_t bitfield = READ_INTPTR_FIELD(this, kBitfieldOffset);
+    int32_t bitfield = RELAXED_READ_INT32_FIELD(this, kBitfieldOffset);
+    return LengthBits::decode(static_cast<uint32_t>(bitfield));
+  }
+
+  // For use by the GC.
+  inline int synchronized_length() const {
+    int32_t bitfield = ACQUIRE_READ_INT32_FIELD(this, kBitfieldOffset);
     return LengthBits::decode(static_cast<uint32_t>(bitfield));
   }
 
   // Increasing kMaxLength will require code changes.
-  static const int kMaxLengthBits = kMaxInt - kPointerSize * kBitsPerByte - 1;
-  static const int kMaxLength = kMaxLengthBits / (kPointerSize * kBitsPerByte);
+  static const int kMaxLengthBits =
+      kMaxInt - kSystemPointerSize * kBitsPerByte - 1;
+  static const int kMaxLength =
+      kMaxLengthBits / (kSystemPointerSize * kBitsPerByte);
 
+  // Sign and length are stored in the same bitfield.  Since the GC needs to be
+  // able to read the length concurrently, the getters and setters are atomic.
   static const int kLengthFieldBits = 30;
   STATIC_ASSERT(kMaxLength <= ((1 << kLengthFieldBits) - 1));
   class SignBits : public BitField<bool, 0, 1> {};
   class LengthBits : public BitField<int, SignBits::kNext, kLengthFieldBits> {};
   STATIC_ASSERT(LengthBits::kNext <= 32);
 
-  static const int kBitfieldOffset = HeapObject::kHeaderSize;
-  static const int kDigitsOffset = kBitfieldOffset + kPointerSize;
-  static const int kHeaderSize = kDigitsOffset;
+  // Layout description.
+#define BIGINT_FIELDS(V)                                                  \
+  V(kBitfieldOffset, kInt32Size)                                          \
+  V(kOptionalPaddingOffset, POINTER_SIZE_PADDING(kOptionalPaddingOffset)) \
+  /* Header size. */                                                      \
+  V(kHeaderSize, 0)                                                       \
+  V(kDigitsOffset, 0)
+
+  DEFINE_FIELD_OFFSET_CONSTANTS(HeapObject::kHeaderSize, BIGINT_FIELDS)
+#undef BIGINT_FIELDS
 
  private:
   friend class ::v8::internal::BigInt;  // MSVC wants full namespace.
@@ -49,7 +66,7 @@ class BigIntBase : public HeapObject {
   typedef uintptr_t digit_t;
   static const int kDigitSize = sizeof(digit_t);
   // kMaxLength definition assumes this:
-  STATIC_ASSERT(kDigitSize == kPointerSize);
+  STATIC_ASSERT(kDigitSize == kSystemPointerSize);
 
   static const int kDigitBits = kDigitSize * kBitsPerByte;
   static const int kHalfDigitBits = kDigitBits / 2;
@@ -57,7 +74,7 @@ class BigIntBase : public HeapObject {
 
   // sign() == true means negative.
   inline bool sign() const {
-    intptr_t bitfield = READ_INTPTR_FIELD(this, kBitfieldOffset);
+    intptr_t bitfield = RELAXED_READ_INTPTR_FIELD(this, kBitfieldOffset);
     return SignBits::decode(static_cast<uint32_t>(bitfield));
   }
 
@@ -86,6 +103,15 @@ class FreshlyAllocatedBigInt : public BigIntBase {
 
  public:
   inline static FreshlyAllocatedBigInt* cast(Object* object);
+
+  // Clear uninitialized padding space.
+  inline void clear_padding() {
+    if (FIELD_SIZE(kOptionalPaddingOffset)) {
+      DCHECK_EQ(4, FIELD_SIZE(kOptionalPaddingOffset));
+      memset(reinterpret_cast<void*>(address() + kOptionalPaddingOffset), 0,
+             FIELD_SIZE(kOptionalPaddingOffset));
+    }
+  }
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(FreshlyAllocatedBigInt);
@@ -173,7 +199,8 @@ class V8_EXPORT_PRIVATE BigInt : public BigIntBase {
   }
 
   static MaybeHandle<String> ToString(Isolate* isolate, Handle<BigInt> bigint,
-                                      int radix = 10);
+                                      int radix = 10,
+                                      ShouldThrow should_throw = kThrowOnError);
   // "The Number value for x", see:
   // https://tc39.github.io/ecma262/#sec-ecmascript-language-types-number-type
   // Returns a Smi or HeapNumber.

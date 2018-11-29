@@ -7,6 +7,7 @@
 
 #include "src/objects.h"
 #include "src/objects/fixed-array.h"
+#include "src/objects/js-objects.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
@@ -27,9 +28,6 @@ class Zone;
 // The runtime representation of an ECMAScript module.
 class Module : public Struct, public NeverReadOnlySpaceObject {
  public:
-  using NeverReadOnlySpaceObject::GetHeap;
-  using NeverReadOnlySpaceObject::GetIsolate;
-
   DECL_CAST(Module)
   DECL_VERIFIER(Module)
   DECL_PRINTER(Module)
@@ -44,12 +42,12 @@ class Module : public Struct, public NeverReadOnlySpaceObject {
   // A cell's position in the array is determined by the cell index of the
   // associated module entry (which coincides with the variable index of the
   // associated variable).
-  DECL_ACCESSORS(regular_exports, FixedArray)
-  DECL_ACCESSORS(regular_imports, FixedArray)
+  DECL_ACCESSORS2(regular_exports, FixedArray)
+  DECL_ACCESSORS2(regular_imports, FixedArray)
 
   // The complete export table, mapping an export name to its cell.
   // TODO(neis): We may want to remove the regular exports from the table.
-  DECL_ACCESSORS(exports, ObjectHashTable)
+  DECL_ACCESSORS2(exports, ObjectHashTable)
 
   // Hash for this object (a random non-zero Smi).
   DECL_INT_ACCESSORS(hash)
@@ -72,7 +70,7 @@ class Module : public Struct, public NeverReadOnlySpaceObject {
 
   // The shared function info in case {status} is not kEvaluating, kEvaluated or
   // kErrored.
-  SharedFunctionInfo* GetSharedFunctionInfo() const;
+  SharedFunctionInfo GetSharedFunctionInfo() const;
 
   // The namespace object (or undefined).
   DECL_ACCESSORS(module_namespace, HeapObject)
@@ -80,7 +78,7 @@ class Module : public Struct, public NeverReadOnlySpaceObject {
   // Modules imported or re-exported by this module.
   // Corresponds 1-to-1 to the module specifier strings in
   // ModuleInfo::module_requests.
-  DECL_ACCESSORS(requested_modules, FixedArray)
+  DECL_ACCESSORS2(requested_modules, FixedArray)
 
   // [script]: Script from which the module originates.
   DECL_ACCESSORS(script, Script)
@@ -91,7 +89,7 @@ class Module : public Struct, public NeverReadOnlySpaceObject {
   DECL_ACCESSORS(import_meta, Object)
 
   // Get the ModuleInfo associated with the code.
-  inline ModuleInfo* info() const;
+  inline ModuleInfo info() const;
 
   // Implementation of spec operation ModuleDeclarationInstantiation.
   // Returns false if an exception occurred during instantiation, true
@@ -110,6 +108,9 @@ class Module : public Struct, public NeverReadOnlySpaceObject {
                                      int cell_index);
   static void StoreVariable(Handle<Module> module, int cell_index,
                             Handle<Object> value);
+
+  static int ImportIndex(int cell_index);
+  static int ExportIndex(int cell_index);
 
   // Get the namespace object for [module_request] of [module].  If it doesn't
   // exist yet, it is created.
@@ -254,26 +255,26 @@ class JSModuleNamespace : public JSObject {
 // ModuleInfo is to ModuleDescriptor what ScopeInfo is to Scope.
 class ModuleInfo : public FixedArray {
  public:
-  DECL_CAST(ModuleInfo)
+  DECL_CAST2(ModuleInfo)
 
   static Handle<ModuleInfo> New(Isolate* isolate, Zone* zone,
                                 ModuleDescriptor* descr);
 
-  inline FixedArray* module_requests() const;
-  inline FixedArray* special_exports() const;
-  inline FixedArray* regular_exports() const;
-  inline FixedArray* regular_imports() const;
-  inline FixedArray* namespace_imports() const;
-  inline FixedArray* module_request_positions() const;
+  inline FixedArray module_requests() const;
+  inline FixedArray special_exports() const;
+  inline FixedArray regular_exports() const;
+  inline FixedArray regular_imports() const;
+  inline FixedArray namespace_imports() const;
+  inline FixedArray module_request_positions() const;
 
   // Accessors for [regular_exports].
   int RegularExportCount() const;
-  String* RegularExportLocalName(int i) const;
+  String RegularExportLocalName(int i) const;
   int RegularExportCellIndex(int i) const;
-  FixedArray* RegularExportExportNames(int i) const;
+  FixedArray RegularExportExportNames(int i) const;
 
 #ifdef DEBUG
-  inline bool Equals(ModuleInfo* other) const;
+  inline bool Equals(ModuleInfo other) const;
 #endif
 
  private:
@@ -294,7 +295,7 @@ class ModuleInfo : public FixedArray {
     kRegularExportExportNamesOffset,
     kRegularExportLength
   };
-  DISALLOW_IMPLICIT_CONSTRUCTORS(ModuleInfo);
+  OBJECT_CONSTRUCTORS(ModuleInfo, FixedArray);
 };
 
 class ModuleInfoEntry : public Struct {
