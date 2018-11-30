@@ -17,7 +17,6 @@
       '../test/unittests/api/v8-object-unittest.cc',
       '../test/unittests/asmjs/asm-scanner-unittest.cc',
       '../test/unittests/asmjs/asm-types-unittest.cc',
-      '../test/unittests/asmjs/switch-logic-unittest.cc',
       '../test/unittests/base/atomic-utils-unittest.cc',
       '../test/unittests/base/bits-unittest.cc',
       '../test/unittests/base/cpu-unittest.cc',
@@ -141,6 +140,7 @@
       '../test/unittests/libplatform/task-queue-unittest.cc',
       '../test/unittests/libplatform/worker-thread-unittest.cc',
       '../test/unittests/locked-queue-unittest.cc',
+      '../test/unittests/microtask-queue-unittest.cc',
       '../test/unittests/object-unittest.cc',
       '../test/unittests/parser/ast-value-unittest.cc',
       '../test/unittests/parser/preparser-unittest.cc',
@@ -188,6 +188,7 @@
     ],
     'unittests_sources_x64': [
       '../test/unittests/compiler/x64/instruction-selector-x64-unittest.cc',
+      '../test/unittests/wasm/trap-handler-x64-unittest.cc',
     ],
     'unittests_sources_ppc': [
       '../test/unittests/compiler/ppc/instruction-selector-ppc-unittest.cc',
