@@ -18,6 +18,7 @@ using v8::kPromiseRejectWithNoHandler;
 using v8::kPromiseResolveAfterResolved;
 using v8::Local;
 using v8::MaybeLocal;
+using v8::MicrotasksScope;
 using v8::Number;
 using v8::Object;
 using v8::Promise;
@@ -26,8 +27,8 @@ using v8::PromiseRejectMessage;
 using v8::String;
 using v8::Value;
 
-void RunMicrotasks(const FunctionCallbackInfo<Value>& args) {
-  args.GetIsolate()->RunMicrotasks();
+void PerformMicrotaskCheckpoint(const FunctionCallbackInfo<Value>& args) {
+  MicrotasksScope::PerformCheckpoint(args.GetIsolate());
 }
 
 void SetupTraceCategoryState(const FunctionCallbackInfo<Value>& args) {
@@ -45,14 +46,16 @@ void SetupNextTick(const FunctionCallbackInfo<Value>& args) {
 
   env->set_tick_callback_function(args[0].As<Function>());
 
-  Local<Function> run_microtasks_fn =
-      env->NewFunctionTemplate(RunMicrotasks)->GetFunction(context)
-          .ToLocalChecked();
-  run_microtasks_fn->SetName(FIXED_ONE_BYTE_STRING(isolate, "runMicrotasks"));
+  Local<Function> microtask_checkpoint_fn =
+      env->NewFunctionTemplate(PerformMicrotaskCheckpoint)
+         ->GetFunction(context)
+         .ToLocalChecked();
+  microtask_checkpoint_fn->SetName(
+      FIXED_ONE_BYTE_STRING(isolate, "performMicrotaskCheckpoint"));
 
   Local<Value> ret[] = {
     env->tick_info()->fields().GetJSArray(),
-    run_microtasks_fn
+    microtask_checkpoint_fn
   };
 
   args.GetReturnValue().Set(Array::New(isolate, ret, arraysize(ret)));
